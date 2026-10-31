@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swimming Dog</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a4a7a; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener('resize', resize); resize();
+
+// Dog and target
+const dog = { x: W / 2, y: H / 2, angle: 0, facing: 1, speed: 0, wag: 0.15 };
+const target = { x: W / 2, y: H / 2 };
+function aim(e) { target.x = e.clientX; target.y = e.clientY; }
+addEventListener('pointermove', aim);
+addEventListener('pointerdown', aim);
+
+const bones = [];
+let t = 0, boneTimer = 0;
+
+function drawBone(b) {
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  ctx.rotate(b.rot);
+  ctx.globalAlpha = b.life;
+  ctx.fillStyle = '#fffaf0';
+  ctx.strokeStyle = '#cfc4a8';
+  ctx.lineWidth = 1;
+  const s = b.size;
+  ctx.beginPath();
+  ctx.rect(-s, -s * 0.2, s * 2, s * 0.4);
+  for (const sx of [-1, 1]) {
+    ctx.moveTo(sx * s + s * 0.3, -s * 0.2);
+    ctx.arc(sx * s, -s * 0.28, s * 0.3, 0, Math.PI * 2);
+    ctx.moveTo(sx * s + s * 0.3, s * 0.2);
+    ctx.arc(sx * s, s * 0.28, s * 0.3, 0, Math.PI * 2);
+  }
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDog() {
+  const bob = Math.sin(t * 6) * 3;
+  const paddle = Math.sin(t * 12) * 0.5;
+  ctx.save();
+  ctx.translate(dog.x, dog.y + bob);
+  ctx.rotate(dog.angle);
+  ctx.scale(dog.facing, 1);
+  const coat = '#c98f4f', dark = '#8a5a2b', light = '#e8c28f';
+
+  // tail
+  ctx.strokeStyle = coat; ctx.lineWidth = 8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-48, -4);
+  const wag = Math.sin(t * 18) * 22 * dog.wag;
+  ctx.quadraticCurveTo(-72, -14 + wag * 0.5, -76 + wag * 0.3, -34 + wag); ctx.stroke();
+
+  // back paddling legs
+  ctx.strokeStyle = dark; ctx.lineWidth = 9;
+  for (const [lx, ph] of [[-28, 1], [-10, -1]]) {
+    ctx.beginPath(); ctx.moveTo(lx, 14);
+    ctx.lineTo(lx - 6 + paddle * 14 * ph, 34); ctx.stroke();
+  }
+  // body
+  ctx.fillStyle = coat;
+  ctx.beginPath(); ctx.ellipse(-8, 0, 50, 24, 0, 0, Math.PI * 2); ctx.fill();
+  // belly patch
+  ctx.fillStyle = light;
+  ctx.beginPath(); ctx.ellipse(-4, 12, 32, 9, 0, 0, Math.PI * 2); ctx.fill();
+  // front legs
+  ctx.strokeStyle = dark; ctx.lineWidth = 9;
+  for (const [lx, ph] of [[24, -1], [38, 1]]) {
+    ctx.beginPath(); ctx.moveTo(lx, 14);
+    ctx.lineTo(lx + 4 + paddle * 14 * ph, 34); ctx.stroke();
+  }
+  // neck + head (lean, pointed snout like an Indian pariah)
+  ctx.fillStyle = coat;
+  ctx.beginPath(); ctx.ellipse(46, -16, 22, 18, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(52, -30); ctx.quadraticCurveTo(84, -26, 90, -14);
+  ctx.quadraticCurveTo(84, -2, 52, -4); ctx.closePath(); ctx.fill();
+  // muzzle lighter
+  ctx.fillStyle = light;
+  ctx.beginPath(); ctx.ellipse(76, -12, 14, 8, 0.05, 0, Math.PI * 2); ctx.fill();
+  // nose
+  ctx.fillStyle = '#222';
+  ctx.beginPath(); ctx.arc(89, -14, 4, 0, Math.PI * 2); ctx.fill();
+  // upright ear
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.moveTo(38, -30); ctx.lineTo(42, -56); ctx.lineTo(58, -32); ctx.closePath(); ctx.fill();
+  // eye
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(62, -22, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#222';
+  ctx.beginPath(); ctx.arc(63.5, -22, 2.4, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawWave(y, amp, speed, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, y);
+  for (let x = 0; x <= W; x += 10) ctx.lineTo(x, y + Math.sin(x * 0.015 + t * speed) * amp);
+  ctx.lineTo(W, 0); ctx.closePath(); ctx.fill();
+}
+
+function frame() {
+  t += 0.016;
+
+  // move dog toward target
+  const dx = target.x - dog.x, dy = target.y - dog.y;
+  const dist = Math.hypot(dx, dy);
+  const desired = Math.min(dist * 0.05, 7);
+  dog.speed += (desired - dog.speed) * 0.1;
+  if (dist > 1) { dog.x += dx / dist * dog.speed; dog.y += dy / dist * dog.speed; }
+  if (Math.abs(dx) > 8) dog.facing = dx > 0 ? 1 : -1;
+  // tilt nose up/down toward the target (drawing is mirrored when facing left)
+  const want = dist > 10 ? Math.atan2(dy, Math.max(Math.abs(dx), 40)) * 0.6 * dog.facing : 0;
+  dog.angle += (want - dog.angle) * 0.1;
+
+  // bones float up from the dog
+  boneTimer += 0.016;
+  const rate = dog.speed > 0.8 ? 0.12 : 0.6;
+  if (boneTimer > rate) {
+    boneTimer = 0;
+    bones.push({ x: dog.x + (Math.random() - 0.5) * 50, y: dog.y - 20,
+      vy: 0.8 + Math.random() * 0.8, ph: Math.random() * 6, rot: Math.random() * 6,
+      size: 9 + Math.random() * 6, life: 1 });
+  }
+  for (let i = bones.length - 1; i >= 0; i--) {
+    const b = bones[i];
+    b.y -= b.vy; b.x += Math.sin(t * 3 + b.ph) * 0.6; b.rot += 0.01;
+    b.life -= 0.004;
+    if (b.life <= 0 || b.y < -20) bones.splice(i, 1);
+  }
+
+  // wag the tail hard when a bone is close, only a little otherwise
+  const seesBone = bones.some(b => Math.hypot(b.x - dog.x, b.y - dog.y) < 170);
+  dog.wag += ((seesBone ? 1 : 0.15) - dog.wag) * 0.1;
+
+  // draw
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#5fc6ea'); g.addColorStop(1, '#073a66');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  drawWave(40, 6, 1.2, 'rgba(255,255,255,0.25)');
+  drawWave(28, 5, 1.8, 'rgba(255,255,255,0.35)');
+  bones.forEach(drawBone);
+  drawDog();
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>
